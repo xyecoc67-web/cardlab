@@ -1,3 +1,4 @@
+const STRIPE_API_VERSION = '2026-09-30.endive';
 const JSON_HEADERS = { 'content-type':'application/json; charset=utf-8', 'cache-control':'no-store', 'x-content-type-options':'nosniff' };
 function json(value, status=200) { return new Response(JSON.stringify(value), {status, headers:JSON_HEADERS}); }
 async function ownerHash(identity) {
@@ -31,7 +32,7 @@ export function createApp(assets, stripeFetch=globalThis.fetch) {
     return next.creates>5 || next.reads>40;
   }
   async function callStripe(path, key, options={}) {
-    const headers={Authorization:`Bearer ${key}`,...options.headers};
+    const headers={Authorization:`Bearer ${key}`,...options.headers,'Stripe-Version':STRIPE_API_VERSION};
     if(options.body) headers['Content-Type']='application/x-www-form-urlencoded';
     let response;
     try { response=await stripeFetch(`https://api.stripe.com/v1/${path}`,{...options,headers,signal:AbortSignal.timeout(15000)}); }
@@ -56,7 +57,7 @@ export function createApp(assets, stripeFetch=globalThis.fetch) {
         let body; try { body=JSON.parse(raw); } catch { return json({error:'Invalid JSON.'},400); }
         if(!body || Array.isArray(body) || Object.keys(body).some(key=>key!=='requestId') || !/^[a-f0-9-]{36}$/.test(body.requestId??'')) return json({error:'Only a request ID is accepted. Enter payment details on Stripe Checkout.'},400);
         if(rateLimited(owner,true)) return json({error:'Too many test sessions. Try again in a minute.'},429);
-        const params=new URLSearchParams({mode:'payment','payment_method_types[0]':'card','line_items[0][price_data][currency]':'usd','line_items[0][price_data][unit_amount]':'100','line_items[0][price_data][product_data][name]':'Cardlab integration test','line_items[0][quantity]':'1',success_url:`${url.origin}/?stripe_session={CHECKOUT_SESSION_ID}`,cancel_url:`${url.origin}/?stripe_cancelled=1`,'metadata[cardlab_owner]':owner,'metadata[purpose]':'cardlab_test','payment_intent_data[metadata][cardlab_owner]':owner});
+        const params=new URLSearchParams({mode:'payment','allowed_payment_method_types[0]':'card','line_items[0][price_data][currency]':'usd','line_items[0][price_data][unit_amount]':'100','line_items[0][price_data][product_data][name]':'Cardlab integration test','line_items[0][quantity]':'1',success_url:`${url.origin}/?stripe_session={CHECKOUT_SESSION_ID}`,cancel_url:`${url.origin}/?stripe_cancelled=1`,'metadata[cardlab_owner]':owner,'metadata[purpose]':'cardlab_test','payment_intent_data[metadata][cardlab_owner]':owner});
         const result=await callStripe('checkout/sessions',key,{method:'POST',body:params.toString(),headers:{'Idempotency-Key':`cardlab-${owner}-${body.requestId}`}});
         if(result.error)return result.error;
         const session=result.data;
